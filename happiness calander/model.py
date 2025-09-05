@@ -1,6 +1,17 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import os
+import torch
+
+# Get the absolute path
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+MODEL_PATH = os.path.join(BASE_DIR, "..", "assets", "emotion_cnn.pth")
+
+if os.path.exists(MODEL_PATH):
+    model = torch.load(MODEL_PATH, map_location="cpu")
+else:
+    raise FileNotFoundError(f"❗ Model file not found at {MODEL_PATH}")
 
 
 class EmotionCNN(nn.Module):
@@ -58,5 +69,8 @@ class EmotionCNN(nn.Module):
         return x
 
 
+
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = EmotionCNN(num_classes=7).to(device)
+
