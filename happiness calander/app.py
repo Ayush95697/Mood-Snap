@@ -63,20 +63,21 @@ def save_mood_data(mood_data):
         json.dump(mood_data, f, indent=2)
 
 
-def save_selfie_locally(image, date, emotion, confidence):
+def save_selfie_locally(image, date, emotion, confidence, mood_note):
     """Save selfie image locally and update mood data"""
     init_storage()
     date_str = date.strftime("%Y-%m-%d")
     filename = f"selfie_{date_str}.jpg"
     filepath = os.path.join(SELFIES_DIR, filename)
     image.save(filepath, "JPEG", quality=95)
+
     mood_data = load_mood_data()
     mood_data[date_str] = {
         'emotion': emotion,
         'confidence': confidence.item(),
         'timestamp': datetime.datetime.now().isoformat(),
         'filename': filename,
-        'mood_note': '',
+        'mood_note': mood_note,
         'mood_color': EMOTION_COLORS[emotion]
     }
     save_mood_data(mood_data)
@@ -413,6 +414,7 @@ def display_date_detail():
         if st.button("✖️ Close", key="close_detail"):
             st.session_state.show_date_detail = False
             st.rerun()
+
     if image and mood_entry:
         col1, col2 = st.columns([1, 1])
         with col1:
@@ -437,7 +439,7 @@ def display_date_detail():
                 st.subheader("💭 Your Note")
                 st.markdown(f"""
                 <div style="background-color: #f8f9fa; padding: 15px; border-radius: 10px;
-                           border-left: 4px solid {color}; margin: 10px 0; color: black;">
+                            border-left: 4px solid {color}; margin: 10px 0; color: black;">
                     <i>"{mood_entry['mood_note']}"</i>
                 </div>
                 """, unsafe_allow_html=True)
@@ -475,7 +477,14 @@ def display_date_detail():
                                     predicted_class = np.argmax(predictions)
                                     predicted_emotion = EMOTION_LABELS[predicted_class]
                                     confidence = predictions[predicted_class]
-                                    success = save_selfie_locally(image, selected_date, predicted_emotion, confidence)
+
+                                    # Add a placeholder for mood note input
+                                    mood_note = st.text_area("💭 Add a mood note (optional):",
+                                                             key="mood_note_date_detail",
+                                                             placeholder="How are you feeling?")
+
+                                    success = save_selfie_locally(image, selected_date, predicted_emotion, confidence,
+                                                                  mood_note)
                                     if success:
                                         st.success(f"✅ Selfie saved for {selected_date.strftime('%B %d, %Y')}!")
                                         time.sleep(2)
@@ -485,20 +494,26 @@ def display_date_detail():
 
 
 def display_results_with_save(predictions, image, model):
-    """Display prediction results with save to calendar option"""
+    """Display prediction results with save to calendar option, showing only the most probable emotion"""
     if predictions is None:
         return
+
     predicted_class = np.argmax(predictions)
     predicted_emotion = EMOTION_LABELS[predicted_class]
     confidence = predictions[predicted_class]
+
     col1, col2 = st.columns(2)
+
     with col1:
         st.subheader("📸 Your Selfie")
         st.image(image, use_column_width=True)
+
     with col2:
         st.subheader("🎯 Emotion Analysis")
         emoji = EMOTION_EMOJIS[predicted_emotion]
         color = EMOTION_COLORS[predicted_emotion]
+
+        # Display only the most probable emotion
         st.markdown(f"""
         <div style="background: linear-gradient(135deg, {color} 0%, {color}80 100%);
                     padding: 20px; border-radius: 15px; color: white; text-align: center; margin: 10px 0;">
@@ -506,14 +521,15 @@ def display_results_with_save(predictions, image, model):
             <h3 style="margin: 5px 0;">Confidence: {confidence:.1%}</h3>
         </div>
         """, unsafe_allow_html=True)
-        # New section to show the calendar color
+
         st.subheader("🎨 Calendar Color Preview")
         st.markdown(f"""
         <div style="background-color: {color}; padding: 15px; border-radius: 10px; 
-                   color: white; text-align: center; margin: 10px 0;">
+                    color: white; text-align: center; margin: 10px 0;">
             <p style="font-size: 1.2rem; margin: 0;">This emotion will appear as this color on your calendar.</p>
         </div>
         """, unsafe_allow_html=True)
+
         st.subheader("💾 Save to Calendar")
         save_date = st.date_input("Select date:", value=datetime.date.today(), key="save_date")
         mood_note = st.text_area("💭 Add a mood note (optional):",
@@ -525,8 +541,6 @@ def display_results_with_save(predictions, image, model):
             sentiment_tokenizer, sentiment_model = load_sentiment_model()
             if sentiment_tokenizer and sentiment_model:
                 sentiment, sentiment_confidence = get_sentiment(sentiment_tokenizer, sentiment_model, mood_note)
-
-                # Display the sentiment result right below the text area
                 sentiment_emoji = "👍" if sentiment == "Positive" else "👎"
                 sentiment_color = "#28a745" if sentiment == "Positive" else "#dc3545"
 
@@ -538,21 +552,13 @@ def display_results_with_save(predictions, image, model):
 
         if st.button("📅 Save Selfie to Calendar", type="primary", use_container_width=True):
             try:
-                success = save_selfie_locally(image, save_date, predicted_emotion, confidence)
-                if success and mood_note.strip():
-                    mood_data = load_mood_data()
-                    date_str = save_date.strftime("%Y-%m-%d")
-                    if date_str in mood_data:
-                        mood_data[date_str]['mood_note'] = mood_note.strip()
-                        save_mood_data(mood_data)
-                st.success(f"✅ Selfie saved for {save_date.strftime('%B %d, %Y')}!")
-                time.sleep(2)
-                st.rerun()
+                success = save_selfie_locally(image, save_date, predicted_emotion, confidence, mood_note)
+                if success:
+                    st.success(f"✅ Selfie saved for {save_date.strftime('%B %d, %Y')}!")
+                    time.sleep(2)
+                    st.rerun()
             except Exception as e:
                 st.error(f"Error saving selfie: {str(e)}")
-        st.subheader("📊 All Emotion Scores")
-        for emotion, score in zip(EMOTION_LABELS, predictions):
-            st.progress(float(score), text=f"{EMOTION_EMOJIS[emotion]} {emotion.title()}: {score:.1%}")
 
 
 def create_analytics_dashboard():
@@ -654,7 +660,7 @@ def create_digital_album():
                             color = EMOTION_COLORS[emotion]
                             st.markdown(f"""
                             <div style="background-color: {color}; padding: 8px; border-radius: 8px;
-                                       color: white; text-align: center; margin: 5px 0; font-size: 14px;">
+                                        color: white; text-align: center; margin: 5px 0; font-size: 14px;">
                                 {emoji} {emotion.title()} ({entry['confidence']:.1%})
                             </div>
                             """, unsafe_allow_html=True)
@@ -675,7 +681,7 @@ def create_digital_album():
                     color = EMOTION_COLORS[emotion]
                     st.markdown(f"""
                     <div style="background-color: {color}; padding: 10px; border-radius: 10px;
-                               color: white; display: inline-block; margin: 5px 0;">
+                                color: white; display: inline-block; margin: 5px 0;">
                         {emoji} {emotion.title()} - Confidence: {entry['confidence']:.1%}
                     </div>
                     """, unsafe_allow_html=True)
@@ -692,10 +698,12 @@ def main():
         layout="wide",
         initial_sidebar_state="collapsed"
     )
+
     if 'calendar_month' not in st.session_state:
         st.session_state.calendar_month = datetime.date.today().month
     if 'calendar_year' not in st.session_state:
         st.session_state.calendar_year = datetime.date.today().year
+
     init_storage()
     st.markdown("""
     <style>
@@ -719,19 +727,24 @@ def main():
     }
     </style>
     """, unsafe_allow_html=True)
+
     st.markdown('<h1 class="main-header">📅 Mood Snap</h1>', unsafe_allow_html=True)
     model = load_emotion_model()
     if model is None:
         st.error("❗ Emotion model not found! Please check your model file.")
         return
+
     tab1, tab2, tab3, tab4, tab5 = st.tabs(["📱 Daily Selfie", "📅 Calendar", "📱 Album", "📊 Insights", "ℹ️ About"])
+
     with tab1:
         st.markdown('<div class="camera-section">', unsafe_allow_html=True)
         st.subheader("📷 Take Your Daily Mood Selfie")
         st.markdown("*Capture your mood and save it to your personal calendar*")
         st.markdown('</div>', unsafe_allow_html=True)
+
         camera_photo = st.camera_input("📸 Take a selfie")
         debug_mode = st.checkbox("🔍 Debug Mode (Show processing steps)")
+
         if camera_photo is not None:
             try:
                 image = Image.open(camera_photo)
@@ -742,6 +755,7 @@ def main():
                     else:
                         face_image = detect_and_crop_face(image)
                         processed_image = preprocess_image(face_image)
+
                     if processed_image is not None:
                         predictions = predict_emotion(model, processed_image)
                         if predictions is not None:
@@ -752,6 +766,7 @@ def main():
                         st.error("Failed to process image. Please try again.")
             except Exception as e:
                 st.error(f"Error processing image: {str(e)}")
+
     with tab2:
         st.subheader("📅 Your Mood Calendar")
         create_modern_calendar(st.session_state.calendar_year, st.session_state.calendar_month)
@@ -773,11 +788,14 @@ def main():
                         st.session_state.selected_date = date_obj
                         st.session_state.show_date_detail = True
                         st.rerun()
+
     with tab3:
         create_digital_album()
+
     with tab4:
         st.subheader("📊 Mood Analytics & Insights")
         create_analytics_dashboard()
+
     with tab5:
         st.subheader("ℹ️ About Mood Calendar")
         st.markdown("""
@@ -798,7 +816,7 @@ def main():
                 color = EMOTION_COLORS[emotion]
                 st.markdown(f"""
                 <div style="background-color: {color}; padding: 10px; border-radius: 10px;
-                           color: white; text-align: center; margin: 5px 0;">
+                            color: white; text-align: center; margin: 5px 0;">
                     {emoji} {emotion.title()}
                 </div>
                 """, unsafe_allow_html=True)
